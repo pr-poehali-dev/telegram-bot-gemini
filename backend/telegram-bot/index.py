@@ -3,6 +3,9 @@ import os
 import urllib.request
 import urllib.parse
 import urllib.error
+import time
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 def handler(event: dict, context) -> dict:
     '''Telegram бот с Gemini 2.5 Flash для ответов на вопросы о релизах'''
@@ -27,10 +30,16 @@ def handler(event: dict, context) -> dict:
             # Получаем сообщение от пользователя
             message = body.get('message', {})
             chat_id = message.get('chat', {}).get('id')
+            user_id = message.get('from', {}).get('id')
+            username = message.get('from', {}).get('username', '')
             text = message.get('text', '')
             
             if not chat_id or not text:
                 return {'statusCode': 200, 'body': json.dumps({'ok': True})}
+            
+            start_time = time.time()
+            response_text = ''
+            error_msg = None
             
             # Обработка команд
             if text == '/help':
@@ -41,7 +50,6 @@ def handler(event: dict, context) -> dict:
 
 Просто задайте любой вопрос о релизах, и я отвечу на основе инструкции по отгрузке! Если не найду ответ в базе знаний, поищу в интернете."""
                 send_telegram_message(chat_id, response_text)
-                return {'statusCode': 200, 'body': json.dumps({'ok': True})}
             
             elif text == '/info':
                 response_text = """ℹ️ О боте:
@@ -56,11 +64,20 @@ def handler(event: dict, context) -> dict:
 
 Задавайте вопросы - помогу разобраться! 🎵"""
                 send_telegram_message(chat_id, response_text)
-                return {'statusCode': 200, 'body': json.dumps({'ok': True})}
             
-            # Отправляем запрос в Gemini
-            gemini_response = ask_gemini(text)
-            send_telegram_message(chat_id, gemini_response)
+            else:
+                # Отправляем запрос в Gemini
+                try:
+                    response_text = ask_gemini(text)
+                    send_telegram_message(chat_id, response_text)
+                except Exception as e:
+                    error_msg = str(e)
+                    response_text = "Ошибка при обработке запроса"
+                    send_telegram_message(chat_id, response_text)
+            
+            # Логируем диалог в БД
+            response_time = int((time.time() - start_time) * 1000)
+            log_message(chat_id, user_id, username, text, response_text, response_time, error_msg)
             
             return {'statusCode': 200, 'body': json.dumps({'ok': True})}
             
@@ -198,3 +215,31 @@ def send_telegram_message(chat_id: int, text: str):
         urllib.request.urlopen(req, timeout=10)
     except Exception as e:
         print(f"Error sending message: {str(e)}")
+
+
+def log_message(chat_id: int, user_id: int, username: str, message_text: str, bot_response: str, response_time_ms: int, error_message: str = None):
+    '''Логирует сообщение в базу данных'''
+    
+    try:
+        db_url = os.environ.get('DATABASE_URL')
+        if not db_url:
+            print("DATABASE_URL not set")
+            return
+        
+        conn = psycopg2.connect(db_url)
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            """
+            INSERT INTO bot_messages (chat_id, user_id, username, message_text, bot_response, response_time_ms, error_message)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (chat_id, user_id, username, message_text, bot_response, response_time_ms, error_message)
+        )
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+    except Exception as e:
+        print(f"Error logging message: {str(e)}")

@@ -1,15 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import Icon from '@/components/ui/icon';
 import { useToast } from '@/hooks/use-toast';
 
 const Index = () => {
-  const [botUrl, setBotUrl] = useState('https://functions.poehali.dev/861e295d-e4d2-4c04-8eed-157185096a34');
-  const [webhookUrl, setWebhookUrl] = useState('');
+  const [botUrl] = useState('https://functions.poehali.dev/861e295d-e4d2-4c04-8eed-157185096a34');
+  const [setupUrl] = useState('https://functions.poehali.dev/7d21f6db-d21a-4283-bd52-65bcd1ce0d07');
   const [isSettingWebhook, setIsSettingWebhook] = useState(false);
+  const [webhookStatus, setWebhookStatus] = useState<string>('⏳ Проверка...');
   const { toast } = useToast();
 
   const copyToClipboard = (text: string) => {
@@ -21,44 +21,40 @@ const Index = () => {
   };
 
   const setWebhook = async () => {
-    if (!webhookUrl) {
-      toast({
-        title: 'Ошибка',
-        description: 'Введите токен бота',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     setIsSettingWebhook(true);
     try {
-      const response = await fetch(
-        `https://api.telegram.org/bot${webhookUrl}/setWebhook?url=${encodeURIComponent(botUrl)}`
-      );
+      const response = await fetch(setupUrl);
       const data = await response.json();
 
-      if (data.ok) {
+      if (data.success) {
+        setWebhookStatus('✅ Активен');
         toast({
           title: 'Успешно!',
-          description: 'Webhook установлен. Бот готов к работе!',
+          description: 'Webhook установлен автоматически. Бот готов к работе!',
         });
       } else {
+        setWebhookStatus('❌ Ошибка');
         toast({
           title: 'Ошибка',
-          description: data.description || 'Не удалось установить webhook',
+          description: data.error || 'Не удалось установить webhook',
           variant: 'destructive',
         });
       }
     } catch (error) {
+      setWebhookStatus('❌ Ошибка');
       toast({
         title: 'Ошибка',
-        description: 'Ошибка подключения к Telegram API',
+        description: 'Ошибка подключения к серверу',
         variant: 'destructive',
       });
     } finally {
       setIsSettingWebhook(false);
     }
   };
+
+  useEffect(() => {
+    setWebhook();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
@@ -117,36 +113,35 @@ const Index = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Icon name="Settings" size={24} className="text-blue-500" />
-                Подключение
+                Webhook
               </CardTitle>
-              <CardDescription>Настройте webhook для Telegram</CardDescription>
+              <CardDescription>Автоматическая настройка подключения</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-2 block">
-                  Токен бота:
-                </label>
-                <Input
-                  type="password"
-                  placeholder="8368172781:AAHJKJ5KPN-s19I3bIFgXMhmbHtP4R6jFdA"
-                  value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
-                  className="mb-2"
-                />
+              <div className="text-center py-6">
+                <div className="text-4xl mb-3">{webhookStatus}</div>
+                <p className="text-sm text-gray-600 mb-4">
+                  {webhookStatus.includes('✅') 
+                    ? 'Бот подключен и готов отвечать на вопросы'
+                    : webhookStatus.includes('❌')
+                    ? 'Проверьте секреты и попробуйте снова'
+                    : 'Подключаем бота к Telegram...'}
+                </p>
                 <Button
                   onClick={setWebhook}
                   disabled={isSettingWebhook}
-                  className="w-full"
+                  variant="outline"
+                  size="sm"
                 >
                   {isSettingWebhook ? (
                     <>
-                      <Icon name="Loader2" size={18} className="mr-2 animate-spin" />
-                      Устанавливаю...
+                      <Icon name="Loader2" size={16} className="mr-2 animate-spin" />
+                      Проверяю...
                     </>
                   ) : (
                     <>
-                      <Icon name="Link" size={18} className="mr-2" />
-                      Установить Webhook
+                      <Icon name="RefreshCw" size={16} className="mr-2" />
+                      Проверить снова
                     </>
                   )}
                 </Button>
