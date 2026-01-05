@@ -1,0 +1,18 @@
+{
+  "tests": [
+    {
+      "name": "Get all knowledge items",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "0": {
+          "id": "number",
+          "category": "string",
+          "question": "string"
+        }
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

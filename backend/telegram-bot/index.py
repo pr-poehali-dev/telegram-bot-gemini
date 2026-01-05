@@ -66,9 +66,12 @@ def handler(event: dict, context) -> dict:
                 send_telegram_message(chat_id, response_text)
             
             else:
-                # Отправляем запрос в Gemini
+                # Сначала ищем в базе знаний
                 try:
-                    response_text = ask_gemini(text)
+                    kb_answer = search_knowledge_base(text)
+                    
+                    # Отправляем запрос в Gemini (с контекстом из БД если нашли)
+                    response_text = ask_gemini(text, kb_answer)
                     send_telegram_message(chat_id, response_text)
                 except Exception as e:
                     error_msg = str(e)
@@ -92,21 +95,62 @@ def handler(event: dict, context) -> dict:
     }
 
 
-def ask_gemini(question: str) -> str:
+def search_knowledge_base(question: str) -> str:
+    '''Ищет ответ в базе знаний'''
+    
+    dsn = os.environ.get('DATABASE_URL')
+    
+    try:
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Полнотекстовый поиск по вопросу
+        query = """
+        SELECT answer, category, 
+               ts_rank(to_tsvector('russian', question || ' ' || answer), 
+                      plainto_tsquery('russian', %s)) as rank
+        FROM knowledge_base
+        WHERE to_tsvector('russian', question || ' ' || answer) @@ plainto_tsquery('russian', %s)
+        ORDER BY rank DESC
+        LIMIT 1
+        """
+        
+        cur.execute(query, (question, question))
+        result = cur.fetchone()
+        
+        cur.close()
+        conn.close()
+        
+        if result:
+            return result['answer']
+        else:
+            return None
+            
+    except Exception as e:
+        print(f"DB error: {str(e)}")
+        return None
+
+
+def ask_gemini(question: str, kb_context: str = None) -> str:
     '''Отправляет вопрос в Gemini API через прокси'''
     
     api_key = os.environ.get('GEMINI_API_KEY')
     proxy_url = os.environ.get('PROXY_URL')
     
     # Контекст с инструкцией
-    system_context = """Ты помощник по релизам музыки. Отвечай прямо на вопрос пользователя, без лишних приветствий.
+    if kb_context:
+        system_context = f"""Ты помощник по релизам музыки. Используй эту информацию из базы знаний для ответа:
+
+{kb_context}
+
+Отвечай прямо на вопрос, без лишних приветствий. Если информации в базе недостаточно, дополни своими знаниями."""
+    else:
+        system_context = """Ты помощник по релизам музыки. Отвечай прямо на вопрос пользователя, без лишних приветствий.
 
 ВАЖНО:
 - Читай вопрос пользователя и отвечай КОНКРЕТНО на него
-- Не здоровайся каждый раз, если уже общались
-- Будь лаконичным, не повторяй всю инструкцию целиком
-- Давай только нужную информацию по теме вопроса
-- Форматируй списки для удобства чтения
+- Не здоровайся каждый раз
+- Будь лаконичным
 
 ИНСТРУКЦИЯ ПО ОТГРУЗКЕ РЕЛИЗА:
 
