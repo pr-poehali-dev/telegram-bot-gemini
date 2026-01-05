@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import Icon from '@/components/ui/icon';
 import { useToast } from '@/hooks/use-toast';
@@ -54,6 +55,7 @@ const Index = () => {
 
   useEffect(() => {
     setWebhook();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
